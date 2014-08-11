@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html> 
+  <head> 
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <!--The viewport meta tag is used to improve the presentation and behavior of the samples 
+      on iOS devices-->
+    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+    <title>Map with scalebar</title>
+
+    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/dojo/dijit/themes/claro/claro.css"> 
+    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/esri/css/esri.css">
+    <style> 
+      html, body { height: 100%; width: 100%; margin: 0; padding: 0; font-family: sans-serif;}
+      #map{padding:0;}
+      #titleBar{
+      	font-size: x-large;
+      }
+      #gazetteer {
+        display: block;
+        position: absolute;
+        z-index: 20;
+        top: 5px;
+        right: 5px;
+		}
+		#dijit_layout_TabContainer_0 > div.dijitTabPaneWrapper.dijitTabContainerTop-container {
+ 			height: 25%;
+ 			width: 100%;
+      }
+      #btnCalcRoute {
+      	/*top: 5px;      	*/
+      }
+    </style> 
+
+    <script src="http://js.arcgis.com/3.10/"></script>
+    <script> 
+      var map, geocoder;
+      var txtOrigin, txtDestination;
+ 
+      require([
+      	"dojo/dom",
+      	"dojo/on",
+      	"dijit/registry",
+			"dojo/parser",
+			"esri/map", 
+			"esri/dijit/Scalebar",
+			"esri/dijit/Geocoder",
+			"dijit/layout/BorderContainer", 
+			"dijit/layout/ContentPane", 
+			"dijit/layout/TabContainer",
+			"dijit/form/TextBox",	
+			"dijit/form/Button",
+			"dijit/form/NumberSpinner",	
+			"dojo/domReady!"
+      ], function(
+      	dom,
+      	on,
+      	registry,
+			parser,
+			Map, 
+			Scalebar,
+			Geocoder,
+			BorderContainer,
+			ContentPane,
+			TabContainer,
+			TextBox,
+			Button,
+			NumberSpinner
+      ) {
+       	parser.parse();
+
+			txtOrigin = registry.byId("origin");
+			txtDestination = registry.byId("destination");
+			
+			// on(txtOrigin, "change", geocodeRouteStop);
+			// on(txtOrigin, "keyUp",  geocodeRouteStop);
+			
+			map = new Map("map"
+            , { basemap: "topo",
+               center: [-116.093, 34.218],
+               zoom: 7
+         });
+
+         geocoder = new Geocoder({
+           map : map,
+            autoComplete : true
+         }, "gazetteer");
+         geocoder.startup();
+         
+         txtOrigin = new Geocoder({
+         	autoComplete: true
+         }, "origin");
+         on(txtOrigin, "select, clear", verifyRoutingOptions);
+         
+         txtDestination = new Geocoder({
+         	autoComplete: true
+         }, "destination");
+        on(txtDestination, "select, clear", verifyRoutingOptions);
+ 
+         var scalebar = new Scalebar({
+            map : map,
+            // "dual" displays both miles and kilometers
+            // "english" is the default, which displays miles
+            // use "metric" for kilometers
+          	scalebarUnit : "dual"
+          });
+		});
+		
+		// EVENTS
+		function verifyRoutingOptions(parm1) {
+			var wasCleared = (parm1 == null);
+			var bBothStopsEntered = (txtOrigin.results.length > 0 && txtDestination.results.length > 0);
+			console.log(
+				parm1 ? "Created a stop\nparm1: " + parm1 : "Cleared a stop");
+			// Check to see if we've got two selected addresses; if so, enable the GO button
+			var btnRoute = dijit.byId("btnCalcRoute");
+			btnRoute.setDisabled(wasCleared || !bBothStopsEntered);
+		}
+    </script> 
+  </head> 
+  
+  <body class="claro"> 
+    <div data-dojo-type="dijit/layout/BorderContainer" 
+         data-dojo-props="design:'headline', gutters:false, liveSplitters:true"
+         style="width: 100%; height: 100%; margin: 0;"> 
+    
+		<div id="titleBar" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'top'">
+	    		Network Analyst / Routing
+		</div>
+ 		
+ 		<div id="gazetteer"></div>
+		
+		<div id="routing" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="splitter:true, region:'left'"
+			style="width: 25%; margin: 0;">
+
+			<div data-dojo-type="dijit/form/Button" id="btnCalcRoute" type="button"
+				disabled="disabled">Route Me</div>
+
+			<div data-dojo-type="dijit/layout/TabContainer" doLayout="true">
+				
+				<div data-dojo-type="dijit/layout/ContentPane" title="Stops" data-dojo-props="selected:true">
+			      Start here...
+ 					<div id="origin"></div>
+					<!-- <input type="text" value="" id="origin" 
+					    data-dojo-type="dijit/form/TextBox"
+					    data-dojo-props="trim:true, placeholder:'Your start location'"/> -->
+					<br/>
+					...and stop here:
+			 		<div id="destination"></div>
+					<!-- <input type="text" value="" id="destination" 
+					    data-dojo-type="dijit/form/TextBox"
+					    data-dojo-props="trim:true, placeholder:'Your end location'"/> -->
+					
+				</div>
+			   <div data-dojo-type="dijit/layout/ContentPane" title="Options">
+						Here are some routing options for you.<br/><br/>
+						<label for="maxVehicleSpeed">Max Speed: </label>
+						<div data-dojo-type="dijit/form/NumberSpinner" id="maxVehicleSpeed"
+							style="width: 50px;"
+							data-dojo-props="smallDelta:5, constraints:{min:10,max:60,places:0}, value: 35"></div>
+						<br/>
+						<label for="maxVehicleSpeedLimit">Avoid roads faster than:</label>
+						<div data-dojo-type="dijit/form/NumberSpinner" id="maxVehicleSpeedLimit"
+							style="width: 50px;"
+							data-dojo-props="smallDelta:5, constraints:{min:10,max:60,places:0}, value: 45"></div>
+				</div>
+			</div>
+			
+		</div>
+		
+      <div id="map" 
+           data-dojo-type="dijit/layout/ContentPane" 
+           data-dojo-props="splitter:true, region:'center'" 
+           style="overflow:hidden;"> 
+      </div> 
+
+    </div> 
+  </body> 
+</html>
