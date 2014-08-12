@@ -22,10 +22,6 @@
         top: 5px;
         right: 5px;
 		}
-		/*#dijit_layout_TabContainer_0 > div.dijitTabPaneWrapper.dijitTabContainerTop-container {
- 			height: 45%;
- 			width: 100%;
-      }*/
      #tcStopsAndOptions {
      		height: 35%;
      }
@@ -36,17 +32,27 @@
 
     <script src="http://js.arcgis.com/3.10/"></script>
     <script> 
-      var map, geocoder;
+      var map, gazetteer, dtBarriers;
+      var lyrBarriers, lyrEndpoints;
       var txtOrigin, txtDestination;
- 
+ 		var btnAddBarrier, btnClearBarriers;
+ 		var spsRouteStart, spsRouteEnd, gpcRouteStart, gpcRouteEnd;
+ 		
       require([
       	"dojo/dom",
       	"dojo/on",
       	"dijit/registry",
 			"dojo/parser",
 			"esri/map", 
+			"esri/graphic",
+			"esri/Color",
+			"esri/layers/GraphicsLayer",
+			"esri/symbols/SimpleLineSymbol",
+			"esri/symbols/SimpleFillSymbol",
+			"esri/symbols/PictureMarkerSymbol",
 			"esri/dijit/Scalebar",
 			"esri/dijit/Geocoder",
+			"esri/toolbars/draw",
 			"dijit/layout/BorderContainer", 
 			"dijit/layout/ContentPane", 
 			"dijit/layout/TabContainer",
@@ -54,6 +60,7 @@
 			"dijit/form/TextBox",	
 			"dijit/form/Button",
 			"dijit/form/NumberSpinner",	
+			"dojo/_base/lang",
 			"dojo/domReady!"
       ], function(
       	dom,
@@ -61,35 +68,54 @@
       	registry,
 			parser,
 			Map, 
+			Graphic,
+			Color,
+			GraphicsLayer,
+			SimpleLineSymbol,
+			SimpleFillSymbol,
+			PictureMarkerSymbol,
 			Scalebar,
 			Geocoder,
+			Draw,
 			BorderContainer,
 			ContentPane,
 			TabContainer,
 			TableContainer,
 			TextBox,
 			Button,
-			NumberSpinner
+			NumberSpinner,
+			lang
       ) {
        	parser.parse();
 
 			txtOrigin = registry.byId("origin");
 			txtDestination = registry.byId("destination");
 			
-			// on(txtOrigin, "change", geocodeRouteStop);
-			// on(txtOrigin, "keyUp",  geocodeRouteStop);
+			spsRouteStart = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/greenPoint.png", 32, 32);
+			spsRouteEnd = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/redPoint.png", 32, 32);
+			var sfsBarrier = new SimpleFillSymbol(
+				  SimpleFillSymbol.STYLE_BACKWARD_DIAGONAL
+				, new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, new Color([255, 0, 0]), 2)
+				, new Color([255, 255, 0, 1])
+				);
 			
 			map = new Map("map"
             , { basemap: "topo",
                center: [-116.093, 34.218],
                zoom: 7
          });
+         map.on("load", function() {
+				dtBarriers = new Draw(map);
+         	dtBarriers.on("draw-end", addBarrier);
+         	lyrBarriers = new GraphicsLayer(); map.addLayer(lyrBarriers);
+         	lyrEndpoints = new GraphicsLayer(); map.addLayer(lyrEndpoints);
+         });
 
-         geocoder = new Geocoder({
-           map : map,
-            autoComplete : true
+         gazetteer = new Geocoder({
+         	map : map,
+				autoComplete : true
          }, "gazetteer");
-         geocoder.startup();
+         gazetteer.startup();
          
          txtOrigin = new Geocoder({
          	autoComplete: true
@@ -99,27 +125,51 @@
          txtDestination = new Geocoder({
          	autoComplete: true
          }, "destination");
-        on(txtDestination, "select, clear", verifyRoutingOptions);
+        	on(txtDestination, "select, clear", verifyRoutingOptions);
  
-         var scalebar = new Scalebar({
-            map : map,
-            // "dual" displays both miles and kilometers
-            // "english" is the default, which displays miles
-            // use "metric" for kilometers
-          	scalebarUnit : "dual"
-          });
+	      var scalebar = new Scalebar({
+	        map : map,
+	        // "dual" displays both miles and kilometers
+	        // "english" is the default, which displays miles
+	        // use "metric" for kilometers
+	       scalebarUnit : "dual"
+	      });
+	       
+	      btnAddBarrier = registry.byId("btnAddBarrier");
+	      btnClearBarriers = registry.byId("btnClearBarriers");
+	      on(btnAddBarrier, "click", drawBarrier);
+	      on(btnClearBarriers, "click", clearBarriers);
+			
+			// EVENTS
+			function verifyRoutingOptions(parm1) {
+				var wasCleared = (parm1 == null);
+				var bBothStopsEntered = (txtOrigin.results.length > 0 && txtDestination.results.length > 0);
+				console.log(
+					parm1 ? "Created a stop\nparm1: " + parm1 : "Cleared a stop");
+				// Check to see if we've got two selected addresses; if so, enable the GO button
+				if ()
+				var btnRoute = dijit.byId("btnCalcRoute");
+				btnRoute.setDisabled(wasCleared || !bBothStopsEntered);
+			}
+			
+			function drawBarrier(evt) {
+		      map.disableMapNavigation();
+		      dtBarriers.activate(Draw.FREEHAND_POLYGON);
+			}
+			
+			function addBarrier(evt) {
+	          //deactivate the toolbar 
+	          dtBarriers.deactivate(); 
+	          map.enableMapNavigation();
+	
+	          lyrBarriers.add(new Graphic(evt.geometry, sfsBarrier));
+			}
+			
+			function clearBarriers(evt) {
+				lyrBarriers.clear();
+			}
 		});
 		
-		// EVENTS
-		function verifyRoutingOptions(parm1) {
-			var wasCleared = (parm1 == null);
-			var bBothStopsEntered = (txtOrigin.results.length > 0 && txtDestination.results.length > 0);
-			console.log(
-				parm1 ? "Created a stop\nparm1: " + parm1 : "Cleared a stop");
-			// Check to see if we've got two selected addresses; if so, enable the GO button
-			var btnRoute = dijit.byId("btnCalcRoute");
-			btnRoute.setDisabled(wasCleared || !bBothStopsEntered);
-		}
     </script> 
   </head> 
   
