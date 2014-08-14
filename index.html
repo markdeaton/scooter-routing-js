@@ -1,15 +1,18 @@
 <!DOCTYPE html>
 <html> 
   <head> 
-    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <!--The viewport meta tag is used to improve the presentation and behavior of the samples 
-      on iOS devices-->
-    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
-    <title>Map with scalebar</title>
+   <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+   <!--The viewport meta tag is used to improve the presentation and behavior of the samples 
+     on iOS devices-->
+   <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
+   <title>Map with scalebar</title>
 
-    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/dojo/dijit/themes/claro/claro.css"> 
-    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/esri/css/esri.css">
-    <style> 
+   <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/dojo/dijit/themes/claro/claro.css"> 
+   <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/esri/css/esri.css">
+   <link rel="stylesheet" type="text/css" href="http://js.arcgis.com/3.10/js/dojo/dojox/grid/resources/Grid.css" >
+	<link rel="stylesheet" type="text/css" href="http://js.arcgis.com/3.10/js/dojo/dojox/grid/resources/claroGrid.css" >
+
+   <style> 
       html, body { height: 100%; width: 100%; margin: 0; padding: 0; font-family: sans-serif;}
       #map{padding:0; overflow:hidden; width:100%}
       #titleBar{
@@ -31,7 +34,7 @@
     	#results {
     		height: 60%;
     	}
-    </style> 
+   </style> 
 
     <script src="http://js.arcgis.com/3.10/"></script>
     <script> 
@@ -55,6 +58,7 @@
 			"esri/geometry/Extent",
 			"esri/tasks/FeatureSet",
 			"esri/Color",
+			"esri/units",
 			"esri/layers/GraphicsLayer",
 			"esri/symbols/SimpleLineSymbol",
 			"esri/symbols/SimpleFillSymbol",
@@ -69,6 +73,7 @@
 			"dijit/layout/ContentPane", 
 			"dijit/layout/TabContainer",
 			"dojox/layout/TableContainer",
+			"dojox/grid/DataGrid",
 			"dijit/form/TextBox",	
 			"dijit/form/Button",
 			"dijit/form/NumberSpinner",	
@@ -85,6 +90,7 @@
 			Extent,
 			FeatureSet,
 			Color,
+			Units,
 			GraphicsLayer,
 			SimpleLineSymbol,
 			SimpleFillSymbol,
@@ -99,6 +105,7 @@
 			ContentPane,
 			TabContainer,
 			TableContainer,
+			DataGrid,
 			TextBox,
 			Button,
 			NumberSpinner,
@@ -106,7 +113,7 @@
       ) {
        	parser.parse();
 
-			slsRoute = new SimpleLineSymbol(SimpleLineSymbol.STYLE_DASH, new Color([171, 17, 68]), 4);
+			slsRoute = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, new Color([171, 17, 68, .60]), 4);
 			
 			txtOrigin = registry.byId("origin");
 			txtDestination = registry.byId("destination");
@@ -120,7 +127,7 @@
 				);
 			
 			map = new Map("map"
-            , { basemap: "topo",
+            , { basemap: "streets",
                center: [-116.093, 34.218],
                zoom: 7
          });
@@ -172,6 +179,8 @@
 				var gpc = evt.result.feature;
 				gpc.symbol = spsRouteStart;
 				gpc.attributes.Name = "Starting Location";
+				// Remove geocoding score; the network routing doesn't like it
+				delete gpc.attributes.score;
 				lyrStops.remove(gpcOrigin);
 				gpcOrigin = gpc;
 				lyrStops.add(gpcOrigin);
@@ -188,6 +197,8 @@
 				var gpc = evt.result.feature;
 				gpc.symbol = spsRouteStop;
 				gpc.attributes.Name = "Ending Location";
+				// Remove geocoding score; the network routing doesn't like it
+				delete gpc.attributes.score;
 				lyrStops.remove(gpcDestination);
 				gpcDestination = gpc;
 				lyrStops.add(gpcDestination);
@@ -244,9 +255,10 @@
 				(prmRoute.polygonBarriers = new FeatureSet()).features = lyrBarriers.graphics;
 				prmRoute.outSpatialReference = map.spatialReference;
 				prmRoute.returnDirections = true;
+				prmRoute.directionsLengthUnits = Units.MILES;
 				prmRoute.attributeParameterValues = [
-					{ 	attributeName	: "Vehicle Max Speed",
-						parameterName	: "Vehicle Max Speed",
+					{ 	attributeName	: "VehicleMaxSpeed",
+						parameterName	: "VehicleMaxSpeed",
 						value				: maxSpeed
 					},
 					{ 	attributeName	: "Riding a Low-Speed Vehicle",
@@ -330,7 +342,14 @@
 			</div>
 			
 			<div data-dojo-type="dijit/layout/ContentPane" id="results">
-				
+				<table data-dojo-type="dojox.grid.DataGrid" data-dojo-id="dgResults" id="dgResults">
+				  <thead>
+				    <tr>
+				      <th field="fieldName"></th>
+				      <th field="fieldName"></th>
+				    </tr>
+				  </thead>
+				</table>
 			</div>
 		</div>
 		
