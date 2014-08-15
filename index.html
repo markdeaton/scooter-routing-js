@@ -5,7 +5,7 @@
    <!--The viewport meta tag is used to improve the presentation and behavior of the samples 
      on iOS devices-->
    <meta name="viewport" content="initial-scale=1, maximum-scale=1,user-scalable=no">
-   <title>Map with scalebar</title>
+   <title>Scooter Routing</title>
 
    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/dojo/dijit/themes/claro/claro.css"> 
    <link rel="stylesheet" href="http://js.arcgis.com/3.10/js/esri/css/esri.css">
@@ -19,25 +19,29 @@
       	font-size: x-large;
       }
       #gazetteer {
-        display: block;
-        position: absolute;
-        z-index: 20;
-        top: 5px;
-        right: 5px;
+			display: block;
+			position: absolute;
+			z-index: 20;
+			top: 5px;
+			right: 5px;
 		}
 		#tcStopsAndOptions {
-		 		height: 275px;
+	 		height: 275px;
+	 		font-size: small;
 		 }
 		#btnCalcRoute {
 			/*top: 5px;      	*/
 		}
     	#results {
-    		height: 60%;
+			height: 60%;
+			padding: 0;
+			padding-top: 8px;
+			visibility: hidden;
     	}
     	.dojoxGrid table {
- 			 margin: 0;
- 			 padding: 0;
- 			 font-size: 10px;			 
+			 margin: 0;
+			 padding: 0;
+			 font-size: 10px;			 
 		}
    </style> 
 
@@ -50,6 +54,7 @@
       var txtOrigin, txtDestination;
  		var btnAddBarrier, btnClearBarriers, btnRoute;
  		var dgResults;
+ 		var sbBusy;
  		
  		var spsRouteStart, spsRouteStop, gpcOrigin, gpcDestination;
  		var slsRoute;
@@ -57,9 +62,11 @@
       require([
       	"dojo/dom",
       	"dojo/on",
+      	"dojo/dom-style",
       	"dijit/registry",
 			"dojo/parser",
-			"esri/map", 
+			"esri/map",
+			"esri/geometry/webMercatorUtils",
 			"esri/graphicsUtils",
 			"esri/graphic",
 			"esri/geometry/Extent",
@@ -76,12 +83,14 @@
 			"esri/tasks/RouteTask",
 			"esri/tasks/RouteParameters",
 			"esri/tasks/RouteResult",
+			"esri/urlUtils",
 			"dijit/layout/BorderContainer",
 			"dijit/layout/ContentPane",
 			"dijit/layout/TabContainer",
 			"dojox/layout/TableContainer",
 			"dojo/data/ItemFileReadStore",
 			"dojox/grid/DataGrid",
+			"dojox/widget/Standby",
 			"dijit/form/TextBox",
 			"dijit/form/Button",
 			"dijit/form/NumberSpinner",
@@ -90,9 +99,11 @@
       ], function(
       	dom,
       	on,
+      	domStyle,
       	registry,
 			parser,
-			Map, 
+			Map,
+			WebMercatorUtils,
 			GraphicsUtils,
 			Graphic,
 			Extent,
@@ -109,11 +120,13 @@
 			RouteTask,
 			RouteParameters,
 			RouteResult,
+			urlUtils,
 			BorderContainer,
 			ContentPane,
 			TabContainer,
 			TableContainer,
 			ItemFileReadStore,
+			Standby,
 			DataGrid,
 			TextBox,
 			Button,
@@ -122,12 +135,17 @@
       ) {
        	parser.parse();
 
-			slsRoute = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, new Color([171, 17, 68, .60]), 4);
+			esriConfig.defaults.io.proxyUrl = "http://cirque.esri.com/flexapiproxy/proxy.ashx";
+			esriConfig.defaults.io.alwaysUseProxy = false;
+ 
+ 			slsRoute = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, new Color([171, 17, 68, .60]), 4);
 			
 			txtOrigin = registry.byId("origin");
 			txtDestination = registry.byId("destination");
 			dgResults = registry.byId("dgResults");
 			dgResults.canSort = function(){return false;};
+			
+			sbBusy = registry.byId("sbBusy");
 			
 			spsRouteStart = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/greenPoint.png", 32, 32);
 			spsRouteStop = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/redPoint.png", 32, 32);
@@ -250,6 +268,7 @@
 			
 			// FIND THE ROUTE
 			function calcRoute() {
+				sbBusy.show();
 				lyrResult.clear();
 				
 				var maxSpeed = registry.byId("maxVehicleSpeed").value;
@@ -261,9 +280,18 @@
 				
 				var prmRoute = new RouteParameters();
 				prmRoute.stops = new FeatureSet();
-				
 				prmRoute.stops.features.push(gpcOrigin); prmRoute.stops.features.push(gpcDestination);
-				(prmRoute.polygonBarriers = new FeatureSet()).features = lyrBarriers.graphics;
+
+				// Some kind of bug in the barrier projection api logic; project it ourselves
+				prmRoute.polygonBarriers = new FeatureSet();
+				var aryBarriers = [];
+				for (var iBarrier = 0; iBarrier < lyrBarriers.graphics.length; iBarrier++) {
+					var wgsGeom = WebMercatorUtils.webMercatorToGeographic(lyrBarriers.graphics[iBarrier].geometry);
+					aryBarriers.push(new Graphic(wgsGeom));
+					// aryBarriers.push(new Graphic(lyrBarriers.graphics[iBarrier].geometry));
+				}
+				prmRoute.polygonBarriers.features = aryBarriers;
+
 				prmRoute.outSpatialReference = map.spatialReference;
 				prmRoute.returnDirections = true;
 				prmRoute.directionsLengthUnits = Units.MILES;
@@ -281,6 +309,7 @@
 				tskRoute.solve(prmRoute);
 				
 				function solveResult(evt) {
+					sbBusy.hide();
 					console.log(evt);
 					lyrResult.add(evt.result.routeResults[0].route.setSymbol(slsRoute));
 					lyrResult.redraw();
@@ -288,19 +317,21 @@
 				}
 				
 				function solveError(evt) {
+					sbBusy.hide();
+					// alert.show()
 					console.log(evt);
 				}
 				
 				function showDirections(directions) {
+					// Add results to grid
 					var aryDirections = directions.features.map(function(feature, index, array) {
 						// If step distance < 1/2 mile, report in feet
 						var sDist, length = feature.attributes["length"];
 						if (length == 0) sDist = null;
-						else if (length > 0.5) sDist = length.toFixed(1) + " mi";
-						else sDist = (length * 5280).toFixed(0) + " ft";
+						else sDist = decimalMilesForDisplay(length);
 						
 						var time = feature.attributes["time"],
-							 sTime= (time > 0) ? time.toFixed(1) + " min" : null;
+							 sTime= (time > 0) ? decimalMinutesToMinsSecs(time) : null;
 					
 						
 						return { step 			: index + 1,
@@ -311,8 +342,37 @@
 					});
 					var store = new ItemFileReadStore({data : { identifier : "step", items: aryDirections }});
 					dgResults.setStore( store );
-					console.log(aryDirections);
+					
+					
+					// Add summary to bottom
+					var sSummary = "Total: " 
+						+ decimalMilesForDisplay(directions.summary.totalLength) 
+						+ " in "
+						+ decimalMinutesToMinsSecs(directions.summary.totalDriveTime);
+					dom.byId("routeSummary").innerHTML = sSummary;
+					
+					domStyle.set("results", "visibility", "visible");
 				}
+				
+				// Utility formatting routines
+				function decimalMilesForDisplay(decimalMiles) {
+					// Returns decimal miles if greater than or equal to 0.5
+					// Returns feet if less than 0.5 but nonnegative
+					// Undefined if negative
+					var sDist;
+					if (decimalMiles >= 0.5) 
+						sDist = decimalMiles.toFixed(1) + " mi";
+					else 
+						sDist = (decimalMiles * 5280).toFixed(0) + " ft";
+						
+					return sDist;					
+				}
+				function decimalMinutesToMinsSecs(decimalMins) {
+					var integerPart = Math.floor(decimalMins);
+					var decimalPart = decimalMins - integerPart;
+					return integerPart + "m " + (decimalPart * 60).toFixed(0) + "s";
+				}
+				
 			}
 		});
 		
@@ -325,7 +385,7 @@
          style="width: 100%; height: 100%; margin: 0;"> 
     
 		<div id="titleBar" data-dojo-type="dijit/layout/ContentPane" data-dojo-props="region:'top'">
-	    		Network Analyst / Routing
+	    		Motor Scooter Routing
 		</div>
  		
  		<div id="gazetteer"></div>
@@ -335,6 +395,7 @@
 
 			<div data-dojo-type="dijit/form/Button" id="btnCalcRoute" type="button"
 				disabled="disabled">Route Me</div>
+			<div id="sbBusy" data-dojo-type="dojox.widget.Standby" data-dojo-props="target:'btnCalcRoute'"></div>
 
 			<div data-dojo-type="dijit/layout/TabContainer" doLayout="true" id="tcStopsAndOptions">
 				
@@ -353,7 +414,7 @@
 					
 				</div>
 			   <div data-dojo-type="dijit/layout/ContentPane" title="Options">
-						Here are some routing options for you.<br/><br/>
+						These might change the route you're given.<br/><br/>
 						<div data-dojo-type="dojox.layout.TableContainer" data-dojo-props="cols:1" id="tc1">
 							<div data-dojo-type="dijit/layout/ContentPane" title="My max speed:">
 								<div data-dojo-type="dijit/form/NumberSpinner" id="maxVehicleSpeed"
@@ -377,7 +438,7 @@
 			</div>
 			
 			<div data-dojo-type="dijit/layout/ContentPane" id="results">
-				<table data-dojo-type="dojox.grid.DataGrid" id="dgResults">
+				<table data-dojo-type="dojox.grid.DataGrid" id="dgResults" data-dojo-props="autoHeight: 10">
 				  <thead>
 				    <tr>
 				      <th field="step" width="15px">#</th>
@@ -387,6 +448,7 @@
 				    </tr>
 				  </thead>
 				</table>
+				<div id="routeSummary"></div>
 			</div>
 		</div>
 		
