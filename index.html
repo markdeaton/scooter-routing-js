@@ -34,6 +34,11 @@
     	#results {
     		height: 60%;
     	}
+    	.dojoxGrid table {
+ 			 margin: 0;
+ 			 padding: 0;
+ 			 font-size: 10px;			 
+		}
    </style> 
 
     <script src="http://js.arcgis.com/3.10/"></script>
@@ -44,6 +49,8 @@
       var lyrBarriers, lyrStops, lyrResult;
       var txtOrigin, txtDestination;
  		var btnAddBarrier, btnClearBarriers, btnRoute;
+ 		var dgResults;
+ 		
  		var spsRouteStart, spsRouteStop, gpcOrigin, gpcDestination;
  		var slsRoute;
  		
@@ -69,14 +76,15 @@
 			"esri/tasks/RouteTask",
 			"esri/tasks/RouteParameters",
 			"esri/tasks/RouteResult",
-			"dijit/layout/BorderContainer", 
-			"dijit/layout/ContentPane", 
+			"dijit/layout/BorderContainer",
+			"dijit/layout/ContentPane",
 			"dijit/layout/TabContainer",
 			"dojox/layout/TableContainer",
+			"dojo/data/ItemFileReadStore",
 			"dojox/grid/DataGrid",
-			"dijit/form/TextBox",	
+			"dijit/form/TextBox",
 			"dijit/form/Button",
-			"dijit/form/NumberSpinner",	
+			"dijit/form/NumberSpinner",
 			"dojo/_base/lang",
 			"dojo/domReady!"
       ], function(
@@ -105,6 +113,7 @@
 			ContentPane,
 			TabContainer,
 			TableContainer,
+			ItemFileReadStore,
 			DataGrid,
 			TextBox,
 			Button,
@@ -117,6 +126,8 @@
 			
 			txtOrigin = registry.byId("origin");
 			txtDestination = registry.byId("destination");
+			dgResults = registry.byId("dgResults");
+			dgResults.canSort = function(){return false;};
 			
 			spsRouteStart = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/greenPoint.png", 32, 32);
 			spsRouteStop = new PictureMarkerSymbol("http://js.arcgis.com/3.10/js/esri/dijit/images/Directions/redPoint.png", 32, 32);
@@ -178,7 +189,7 @@
 				console.log(evt);
 				var gpc = evt.result.feature;
 				gpc.symbol = spsRouteStart;
-				gpc.attributes.Name = "Starting Location";
+				gpc.attributes.Name = evt.result.name;
 				// Remove geocoding score; the network routing doesn't like it
 				delete gpc.attributes.score;
 				lyrStops.remove(gpcOrigin);
@@ -196,7 +207,7 @@
 				console.log(evt);
 				var gpc = evt.result.feature;
 				gpc.symbol = spsRouteStop;
-				gpc.attributes.Name = "Ending Location";
+				gpc.attributes.Name = evt.result.name;
 				// Remove geocoding score; the network routing doesn't like it
 				delete gpc.attributes.score;
 				lyrStops.remove(gpcDestination);
@@ -273,10 +284,34 @@
 					console.log(evt);
 					lyrResult.add(evt.result.routeResults[0].route.setSymbol(slsRoute));
 					lyrResult.redraw();
+					showDirections(evt.result.routeResults[0].directions);
 				}
 				
 				function solveError(evt) {
 					console.log(evt);
+				}
+				
+				function showDirections(directions) {
+					var aryDirections = directions.features.map(function(feature, index, array) {
+						// If step distance < 1/2 mile, report in feet
+						var sDist, length = feature.attributes["length"];
+						if (length == 0) sDist = null;
+						else if (length > 0.5) sDist = length.toFixed(1) + " mi";
+						else sDist = (length * 5280).toFixed(0) + " ft";
+						
+						var time = feature.attributes["time"],
+							 sTime= (time > 0) ? time.toFixed(1) + " min" : null;
+					
+						
+						return { step 			: index + 1,
+									description : feature.attributes["text"],
+									distance		: sDist,
+									time			: sTime,
+									maneuverType: feature.attributes["maneuverType"] };
+					});
+					var store = new ItemFileReadStore({data : { identifier : "step", items: aryDirections }});
+					dgResults.setStore( store );
+					console.log(aryDirections);
 				}
 			}
 		});
@@ -342,11 +377,13 @@
 			</div>
 			
 			<div data-dojo-type="dijit/layout/ContentPane" id="results">
-				<table data-dojo-type="dojox.grid.DataGrid" data-dojo-id="dgResults" id="dgResults">
+				<table data-dojo-type="dojox.grid.DataGrid" id="dgResults">
 				  <thead>
 				    <tr>
-				      <th field="fieldName"></th>
-				      <th field="fieldName"></th>
+				      <th field="step" width="15px">#</th>
+				      <th field="description" width="140px">Do What</th>
+				      <th field="distance" width="40px">Then Go</th>
+				      <th field="time" width="45px">For</th>
 				    </tr>
 				  </thead>
 				</table>
