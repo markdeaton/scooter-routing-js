@@ -47,7 +47,7 @@
 
     <script src="http://js.arcgis.com/3.10/"></script>
     <script> 
-    	const urlRouteTask = "http://cirque.esri.com:6080/arcgis/rest/services/NA/Scooter01/NAServer/Route/solve";
+    	const urlRouteTask = "http://maps.esri.com/apl4/rest/services/ScooterRouting/ScooterRouting/NAServer/Route/solve";
     	
       var map, gazetteer, dtBarriers;
       var lyrBarriers, lyrStops, lyrResult;
@@ -70,6 +70,7 @@
 			"esri/graphicsUtils",
 			"esri/graphic",
 			"esri/geometry/Extent",
+			"esri/geometry/mathUtils",
 			"esri/tasks/FeatureSet",
 			"esri/Color",
 			"esri/units",
@@ -107,6 +108,7 @@
 			GraphicsUtils,
 			Graphic,
 			Extent,
+			MathUtils,
 			FeatureSet,
 			Color,
 			Units,
@@ -135,7 +137,7 @@
       ) {
        	parser.parse();
 
-			esriConfig.defaults.io.proxyUrl = "http://cirque.esri.com/flexapiproxy/proxy.ashx";
+			esriConfig.defaults.io.proxyUrl = "http://maps.esri.com/AGSFlex_Demos/flexapiproxy/proxy.ashx";
 			esriConfig.defaults.io.alwaysUseProxy = false;
  
  			slsRoute = new SimpleLineSymbol(SimpleLineSymbol.STYLE_SOLID, new Color([171, 17, 68, .60]), 4);
@@ -241,14 +243,28 @@
 			}
 			
 			function verifyRoutingEnabled(stopHasJustBeenCleared) {
+				// Check to see if we've got two valid addresses
+				var bBothStopsEnteredAndValid = false;
 				var bBothStopsEntered = (gpcOrigin != null && gpcDestination != null);
-				// Check to see if we've got two selected addresses; if so, enable the GO button
-				btnRoute.setDisabled(stopHasJustBeenCleared || !bBothStopsEntered);
-				// And also zoom to the extent containing the stops
 				if (bBothStopsEntered) {
+					// Check to see if they're close enough for reasonable routing
+					// If not, inform the user and disable the routing button
+					var dist = MathUtils.getLength(
+						WebMercatorUtils.geographicToWebMercator(gpcOrigin.geometry), 
+						WebMercatorUtils.geographicToWebMercator(gpcDestination.geometry)
+						);
+					if (dist <= 50 * 1609.34) 
+						bBothStopsEnteredAndValid = true;
+					else
+						alert("Please use two locations that are within 50 miles of each other.");
+				}
+				btnRoute.setDisabled(!bBothStopsEnteredAndValid);
+				if (bBothStopsEnteredAndValid) {
+					// If so, zoom in and enable the routing button
 					var extent = GraphicsUtils.graphicsExtent([gpcOrigin, gpcDestination]).expand(1.75);
 					map.setExtent(extent);
 				}
+				// btnRoute.setDisabled(stopHasJustBeenCleared || !bBothStopsEntered);
 			}
 			
 			function drawBarrier(evt) {
